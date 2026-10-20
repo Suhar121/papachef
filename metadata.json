@@ -1,0 +1,6 @@
+{
+  "name": "Papaw's Bistro - Orange POS, Kitchen Bell & Visual Menu",
+  "description": "Senior-friendly restaurant POS with instant chef call chimes, visual diner menu with clear discount badges, chef KDS ticket station, and sales analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
