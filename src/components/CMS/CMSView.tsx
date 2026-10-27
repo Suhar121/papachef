@@ -1,521 +1,195 @@
 import React, { useState } from 'react';
-import { 
-  MenuItem, 
-  PromoOffer, 
-  Order, 
-  Category, 
-  OrderStatus 
-} from '../../types/restaurant';
-import { 
-  Utensils, 
-  DollarSign, 
-  Plus, 
-  Search, 
-  Edit3, 
-  Trash2, 
-  Check, 
-  X, 
-  Tag, 
-  Download, 
-  Filter, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle,
-  Eye,
-  Percent,
-  Sparkles
-} from 'lucide-react';
+import { MenuItem, Order } from '../../types/restaurant';
+import { Plus, Trash2, Tag, Settings2, ArrowRight, CheckCircle2, Flame, Store, X } from 'lucide-react';
+import { menu, discounts, orders } from '../../services/api';
 
 interface CMSViewProps {
   menuItems: MenuItem[];
-  onAddMenuItem: (item: MenuItem) => void;
-  onUpdateMenuItem: (item: MenuItem) => void;
-  onDeleteMenuItem: (id: string) => void;
-  offers: PromoOffer[];
-  onAddOffer: (offer: PromoOffer) => void;
-  onToggleOffer: (id: string) => void;
-  onDeleteOffer: (id: string) => void;
   orders: Order[];
-  onUpdateOrderStatus: (orderId: string, status: OrderStatus) => void;
-  onAddManualSale: (order: Order) => void;
-  seniorMode: boolean;
+  user: { role: string; name: string };
+  onMenuCreate: (body: any) => Promise<any>;
+  onMenuUpdate: (id: string | number, body: any) => Promise<any>;
+  onMenuDelete: (id: string | number) => Promise<void>;
+  onDiscountApply: (body: { menu_item_id: number; discount_percent: number }) => Promise<void>;
+  onDiscountRemove: (id: string | number) => Promise<void>;
 }
 
 export const CMSView: React.FC<CMSViewProps> = ({
   menuItems,
-  onAddMenuItem,
-  onUpdateMenuItem,
-  onDeleteMenuItem,
-  offers,
-  onAddOffer,
-  onToggleOffer,
-  onDeleteOffer,
-  orders,
-  onUpdateOrderStatus,
-  onAddManualSale,
-  seniorMode
+  orders: allOrders,
+  user,
+  onMenuCreate,
+  onMenuUpdate,
+  onMenuDelete,
+  onDiscountApply,
+  onDiscountRemove
 }) => {
-  const [activeTab, setActiveTab] = useState<'food' | 'sales' | 'offers'>('food');
-  const [searchFood, setSearchFood] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<Category>('all');
+  const [tab, setTab] = useState<'menu' | 'discounts' | 'orders'>('menu');
 
-  // Food Form Modal state
-  const [isFoodModalOpen, setIsFoodModalOpen] = useState(false);
-  const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
-
-  // Form Fields
-  const [formName, setFormName] = useState('');
-  const [formCategory, setFormCategory] = useState<MenuItem['category']>('mains');
-  const [formDescription, setFormDescription] = useState('');
-  const [formPrice, setFormPrice] = useState('');
-  const [formOriginalPrice, setFormOriginalPrice] = useState('');
-  const [formDiscountPercent, setFormDiscountPercent] = useState('');
-  const [formImageUrl, setFormImageUrl] = useState('');
-  const [formPrepTime, setFormPrepTime] = useState('12');
-  const [formSpicyLevel, setFormSpicyLevel] = useState<0 | 1 | 2 | 3>(0);
-  const [formIsVeg, setFormIsVeg] = useState(false);
-  const [formIngredients, setFormIngredients] = useState('');
-
-  // Sales Ledger state
-  const [searchSales, setSearchSales] = useState('');
-  const [salesStatusFilter, setSalesStatusFilter] = useState<'all' | OrderStatus>('all');
-  const [isManualSaleOpen, setIsManualSaleOpen] = useState(false);
-  const [manualTable, setManualTable] = useState('Table 1');
-  const [manualAmount, setManualAmount] = useState('');
-  const [manualNote, setManualNote] = useState('');
-
-  // Offer Modal State
-  const [isOfferModalOpen, setIsOfferModalOpen] = useState(false);
-  const [offerTitle, setOfferTitle] = useState('');
-  const [offerCode, setOfferCode] = useState('');
-  const [offerTagline, setOfferTagline] = useState('');
-  const [offerDiscountType, setOfferDiscountType] = useState<'percent' | 'flat'>('percent');
-  const [offerValue, setOfferValue] = useState('20');
-  const [offerBadge, setOfferBadge] = useState('20% OFF');
-
-  // Filter food items
-  const filteredFood = menuItems.filter((item) => {
-    const matchesCat = selectedCategory === 'all' || item.category === selectedCategory;
-    const matchesSearch = item.name.toLowerCase().includes(searchFood.toLowerCase()) ||
-      item.description.toLowerCase().includes(searchFood.toLowerCase());
-    return matchesCat && matchesSearch;
+  // Add/Edit item modal state
+  const [itemModalOpen, setItemModalOpen] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | number | null>(null);
+  const [formData, setFormData] = useState({
+    name: '',
+    category: 'mains',
+    description: '',
+    price: '',
+    original_price: '',
+    discount_percent: '',
+    image_url: '',
+    is_available: true,
+    prep_time_minutes: '15',
+    ingredients: ''
   });
 
-  // Filter sales
-  const filteredSales = orders.filter((o) => {
-    const matchesStatus = salesStatusFilter === 'all' || o.status === salesStatusFilter;
-    const matchesQuery = o.orderNumber.toString().includes(searchSales) ||
-      o.tableNumber.toLowerCase().includes(searchSales.toLowerCase()) ||
-      (o.customerName && o.customerName.toLowerCase().includes(searchSales.toLowerCase()));
-    return matchesStatus && matchesQuery;
-  });
+  const categories = ['mains', 'starters', 'combos', 'drinks', 'desserts'];
 
-  const openAddFoodModal = () => {
-    setEditingItem(null);
-    setFormName('');
-    setFormCategory('mains');
-    setFormDescription('');
-    setFormPrice('');
-    setFormOriginalPrice('');
-    setFormDiscountPercent('');
-    setFormImageUrl('https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80');
-    setFormPrepTime('12');
-    setFormSpicyLevel(0);
-    setFormIsVeg(false);
-    setFormIngredients('Fresh produce, Herbs, Olive oil');
-    setIsFoodModalOpen(true);
-  };
-
-  const openEditFoodModal = (item: MenuItem) => {
-    setEditingItem(item);
-    setFormName(item.name);
-    setFormCategory(item.category);
-    setFormDescription(item.description);
-    setFormPrice(item.price.toString());
-    setFormOriginalPrice(item.originalPrice ? item.originalPrice.toString() : '');
-    setFormDiscountPercent(item.discountPercent ? item.discountPercent.toString() : '');
-    setFormImageUrl(item.imageUrl);
-    setFormPrepTime(item.prepTimeMinutes.toString());
-    setFormSpicyLevel(item.spicyLevel || 0);
-    setFormIsVeg(Boolean(item.isVegetarian));
-    setFormIngredients(item.ingredients ? item.ingredients.join(', ') : '');
-    setIsFoodModalOpen(true);
-  };
-
-  const handleSaveFood = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formName.trim() || !formPrice) return;
-
-    const parsedPrice = parseFloat(formPrice) || 0;
-    const parsedOriginalPrice = formOriginalPrice ? parseFloat(formOriginalPrice) : undefined;
-    const parsedDiscountPercent = formDiscountPercent ? parseInt(formDiscountPercent, 10) : undefined;
-    const ingredientsArray = formIngredients
-      .split(',')
-      .map((i) => i.trim())
-      .filter(Boolean);
-
-    if (editingItem) {
-      const updated: MenuItem = {
-        ...editingItem,
-        name: formName.trim(),
-        category: formCategory,
-        description: formDescription.trim(),
-        price: parsedPrice,
-        originalPrice: parsedOriginalPrice,
-        discountPercent: parsedDiscountPercent,
-        discountLabel: parsedDiscountPercent ? `${parsedDiscountPercent}% OFF` : undefined,
-        imageUrl: formImageUrl.trim() || editingItem.imageUrl,
-        prepTimeMinutes: parseInt(formPrepTime, 10) || 10,
-        spicyLevel: formSpicyLevel,
-        isVegetarian: formIsVeg,
-        ingredients: ingredientsArray.length > 0 ? ingredientsArray : editingItem.ingredients
-      };
-      onUpdateMenuItem(updated);
+  const handleSaveItem = async () => {
+    const body = {
+      name: formData.name,
+      category: formData.category,
+      description: formData.description || null,
+      price: parseFloat(formData.price),
+      original_price: formData.original_price ? parseFloat(formData.original_price) : null,
+      discount_percent: formData.discount_percent ? parseInt(formData.discount_percent) : null,
+      image_url: formData.image_url || null,
+      is_available: formData.is_available,
+      prep_time_minutes: parseInt(formData.prep_time_minutes),
+      ingredients: formData.ingredients || null
+    };
+    if (editingItemId) {
+      await onMenuUpdate(editingItemId, body);
     } else {
-      const newItem: MenuItem = {
-        id: `m-${Date.now()}`,
-        name: formName.trim(),
-        category: formCategory,
-        description: formDescription.trim(),
-        price: parsedPrice,
-        originalPrice: parsedOriginalPrice,
-        discountPercent: parsedDiscountPercent,
-        discountLabel: parsedDiscountPercent ? `${parsedDiscountPercent}% OFF` : undefined,
-        imageUrl: formImageUrl.trim() || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=800&q=80',
-        prepTimeMinutes: parseInt(formPrepTime, 10) || 12,
-        spicyLevel: formSpicyLevel,
-        isVegetarian: formIsVeg,
-        ingredients: ingredientsArray.length > 0 ? ingredientsArray : ['Fresh ingredients'],
-        isAvailable: true
-      };
-      onAddMenuItem(newItem);
+      await onMenuCreate(body);
     }
-
-    setIsFoodModalOpen(false);
+    setItemModalOpen(false);
+    setEditingItemId(null);
+    setFormData({ name: '', category: 'mains', description: '', price: '', original_price: '', discount_percent: '', image_url: '', is_available: true, prep_time_minutes: '15', ingredients: '' });
   };
 
-  const handleToggleStock = (item: MenuItem) => {
-    const isAvail = item.isAvailable !== false; // default true
-    onUpdateMenuItem({
-      ...item,
-      isAvailable: !isAvail
+  const openEditItem = (item: MenuItem) => {
+    setEditingItemId(item.id);
+    setFormData({
+      name: item.name,
+      category: item.category,
+      description: item.description || '',
+      price: item.price.toString(),
+      original_price: item.original_price ? item.original_price.toString() : '',
+      discount_percent: item.discount_percent ? item.discount_percent.toString() : '',
+      image_url: item.image_url || '',
+      is_available: item.is_available === 1,
+      prep_time_minutes: item.prep_time_minutes.toString(),
+      ingredients: item.ingredients || ''
     });
+    setItemModalOpen(true);
   };
 
-  const handleSaveOffer = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!offerTitle.trim() || !offerCode.trim() || !offerValue) return;
-
-    const newOffer: PromoOffer = {
-      id: `off-${Date.now()}`,
-      title: offerTitle.trim(),
-      code: offerCode.trim().toUpperCase(),
-      tagline: offerTagline.trim() || `${offerBadge} Special Promo`,
-      discountType: offerDiscountType,
-      discountValue: parseFloat(offerValue) || 10,
-      badge: offerBadge.trim() || `${offerValue}% OFF`,
-      active: true,
-      expiresInText: 'Active in CMS',
-      colorScheme: 'orange'
-    };
-
-    onAddOffer(newOffer);
-    setIsOfferModalOpen(false);
-    setOfferTitle('');
-    setOfferCode('');
-    setOfferTagline('');
+  const deleteItem = async (id: string | number) => {
+    if (!confirm('Delete this menu item?')) return;
+    await onMenuDelete(id);
   };
 
-  const handleCreateManualSale = (e: React.FormEvent) => {
-    e.preventDefault();
-    const amount = parseFloat(manualAmount);
-    if (!amount || amount <= 0) return;
-
-    const newSaleOrder: Order = {
-      id: `ord-man-${Date.now()}`,
-      orderNumber: orders.length > 0 ? Math.max(...orders.map((o) => o.orderNumber)) + 1 : 101,
-      tableNumber: manualTable,
-      customerName: 'Walk-in / Direct Cash',
-      items: [
-        {
-          id: `mi-${Date.now()}`,
-          menuItemId: 'custom-sale',
-          name: manualNote.trim() || 'Custom Order / Walk-in Sale',
-          price: amount,
-          quantity: 1,
-          checkedInKitchen: true
-        }
-      ],
-      subtotal: amount,
-      discountTotal: 0,
-      tax: Number((amount * 0.08).toFixed(2)),
-      grandTotal: Number((amount * 1.08).toFixed(2)),
-      status: 'served',
-      priority: 'normal',
-      notes: `Manual sale entered via CMS: ${manualNote}`,
-      createdAt: Date.now(),
-      completedAt: Date.now(),
-      calledChefCount: 0
-    };
-
-    onAddManualSale(newSaleOrder);
-    setIsManualSaleOpen(false);
-    setManualAmount('');
-    setManualNote('');
+  const applyDiscount = async (item: MenuItem) => {
+    const percent = prompt(`Discount % for "${item.name}" (e.g. 20):`);
+    if (percent === null) return;
+    const p = parseInt(percent);
+    if (isNaN(p) || p < 1 || p > 100) { alert('Enter a valid percentage 1-100'); return; }
+    await onDiscountApply({ menu_item_id: item.id, discount_percent: p });
   };
 
-  const exportSalesCSV = () => {
-    const headers = ['Order #', 'Table', 'Customer', 'Items Count', 'Subtotal ($)', 'Discount ($)', 'Grand Total ($)', 'Status', 'Date'];
-    const rows = orders.map((o) => [
-      o.orderNumber,
-      `"${o.tableNumber}"`,
-      `"${o.customerName || 'Guest'}"`,
-      o.items.reduce((acc, i) => acc + i.quantity, 0),
-      o.subtotal.toFixed(2),
-      o.discountTotal.toFixed(2),
-      o.grandTotal.toFixed(2),
-      o.status,
-      new Date(o.createdAt).toLocaleString()
-    ]);
-
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `restaurant_sales_report_${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const removeDiscount = async (id: string | number) => {
+    if (!confirm('Remove discount from this item?')) return;
+    await onDiscountRemove(id);
   };
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Clean, Non-Congested Top CMS Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-stone-200">
-        <div>
-          <h2 className="font-heading font-extrabold text-2xl text-stone-900 tracking-tight">
-            Restaurant CMS & Operations
-          </h2>
-          <p className="text-stone-500 text-xs sm:text-sm mt-0.5">
-            Manage your food catalog, live stock, discount promotions, and sales transactions.
-          </p>
+    <div className="space-y-4 max-w-full">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Settings2 className="w-5 h-5 text-orange-500" />
+          <h2 className="font-bold text-stone-900 text-sm sm:text-base">CMS</h2>
         </div>
-
-        {/* Clean Segmented Tab Switcher */}
-        <div className="flex items-center gap-1 p-1 bg-stone-100 rounded-2xl border border-stone-200">
+        <div className="flex items-center gap-1">
           <button
-            onClick={() => setActiveTab('food')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'food'
-                ? 'bg-white text-orange-600 shadow-xs'
-                : 'text-stone-600 hover:text-stone-900'
+            onClick={() => setTab('menu')}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-colors ${
+              tab === 'menu' ? 'bg-orange-500 text-white shadow-sm' : 'text-stone-600 hover:bg-stone-200'
             }`}
           >
-            <Utensils className="w-3.5 h-3.5" />
-            <span>Food & Menu ({menuItems.length})</span>
+            📋 Menu
           </button>
-
           <button
-            onClick={() => setActiveTab('offers')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'offers'
-                ? 'bg-white text-orange-600 shadow-xs'
-                : 'text-stone-600 hover:text-stone-900'
+            onClick={() => setTab('discounts')}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-colors ${
+              tab === 'discounts' ? 'bg-orange-500 text-white shadow-sm' : 'text-stone-600 hover:bg-stone-200'
             }`}
           >
-            <Tag className="w-3.5 h-3.5" />
-            <span>Discounts & Offers ({offers.length})</span>
+            🏷️ Discounts
           </button>
-
           <button
-            onClick={() => setActiveTab('sales')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
-              activeTab === 'sales'
-                ? 'bg-white text-orange-600 shadow-xs'
-                : 'text-stone-600 hover:text-stone-900'
+            onClick={() => setTab('orders')}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-bold transition-colors ${
+              tab === 'orders' ? 'bg-orange-500 text-white shadow-sm' : 'text-stone-600 hover:bg-stone-200'
             }`}
           >
-            <DollarSign className="w-3.5 h-3.5" />
-            <span>Sales & Orders ({orders.length})</span>
+            📦 Orders
           </button>
         </div>
       </div>
 
-      {/* ----------------- TAB 1: FOOD MANAGEMENT CMS ----------------- */}
-      {activeTab === 'food' && (
-        <div className="space-y-5">
-          {/* Action & Filter Bar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-72">
-                <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search food item to edit or toggle stock..."
-                  value={searchFood}
-                  onChange={(e) => setSearchFood(e.target.value)}
-                  className="w-full bg-white border border-stone-200 rounded-2xl pl-9 pr-3 py-2 text-xs focus:outline-hidden focus:border-orange-500"
-                />
-              </div>
-
-              {/* Category Filter */}
-              <select
-                value={selectedCategory}
-                onChange={(e) => setSelectedCategory(e.target.value as Category)}
-                className="bg-white border border-stone-200 rounded-2xl px-3 py-2 text-xs font-medium text-stone-700"
-              >
-                <option value="all">All Categories</option>
-                <option value="specials">Specials</option>
-                <option value="mains">Mains</option>
-                <option value="combos">Combos</option>
-                <option value="starters">Starters</option>
-                <option value="drinks">Drinks</option>
-                <option value="desserts">Desserts</option>
-              </select>
-            </div>
-
-            <button
-              onClick={openAddFoodModal}
-              className="w-full sm:w-auto px-4 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-2 shadow-xs transition-transform active:scale-95 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add New Dish</span>
+      {/* MENU TAB */}
+      {tab === 'menu' && (
+        <div className="space-y-3">
+          <div className="flex justify-between items-end gap-2">
+            <h3 className="text-[10px] font-bold text-stone-700 uppercase tracking-wider">Manage Menu Items</h3>
+            <button onClick={() => { setEditingItemId(null); setFormData({ name: '', category: 'mains', description: '', price: '', original_price: '', discount_percent: '', image_url: '', is_available: true, prep_time_minutes: '15', ingredients: '' }); setItemModalOpen(true); }}
+              className="flex items-center gap-1 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-lg text-[10px] shadow-sm transition-colors cursor-pointer">
+              <Plus className="w-3 h-3" /> <span>Add Item</span>
             </button>
           </div>
-
-          {/* Minimal, Spacious Food Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredFood.map((dish) => {
-              const inStock = dish.isAvailable !== false;
-              return (
-                <div
-                  key={dish.id}
-                  className={`bg-white border rounded-2xl p-4 transition-all flex flex-col justify-between ${
-                    inStock ? 'border-stone-200 shadow-2xs hover:border-orange-300' : 'border-stone-200 bg-stone-50/60 opacity-60'
-                  }`}
-                >
-                  <div className="flex gap-3">
-                    <img
-                      src={dish.imageUrl}
-                      alt={dish.name}
-                      className="w-16 h-16 rounded-xl object-cover border border-stone-200 shrink-0"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-1">
-                        <h4 className="font-bold text-stone-900 text-sm truncate">
-                          {dish.name}
-                        </h4>
-                      </div>
-                      <span className="text-3xs uppercase font-bold text-stone-400">
-                        {dish.category}
-                      </span>
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="font-extrabold text-orange-600 text-sm">
-                          ${dish.price.toFixed(2)}
-                        </span>
-                        {dish.originalPrice && (
-                          <span className="text-stone-400 line-through text-xs">
-                            ${dish.originalPrice.toFixed(2)}
-                          </span>
-                        )}
-                        {dish.discountPercent && (
-                          <span className="text-3xs font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-sm">
-                            {dish.discountPercent}% OFF
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-stone-500 line-clamp-2 mt-3">
-                    {dish.description}
-                  </p>
-
-                  {/* Stock Toggle & Edit Actions */}
-                  <div className="pt-3 mt-3 border-t border-stone-100 flex items-center justify-between">
-                    <button
-                      onClick={() => handleToggleStock(dish)}
-                      className={`text-2xs font-bold px-2.5 py-1 rounded-xl border transition-colors cursor-pointer ${
-                        inStock
-                          ? 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100'
-                          : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
-                      }`}
-                    >
-                      {inStock ? '● In Stock' : '✕ Out of Stock'}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {menuItems.map((item) => (
+              <div key={item.id} className="border border-stone-200 rounded-2xl p-3 shadow-sm bg-white hover:shadow-md transition-shadow">
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold ${
+                    item.discount_percent ? 'bg-amber-100 text-amber-800' : 'bg-green-100 text-green-800'
+                  }`}>
+                    {item.discount_percent ? `${item.discount_percent}% OFF` : 'Available'}
+                  </span>
+                  <div className="flex gap-1">
+                    <button onClick={(e) => { e.stopPropagation(); openEditItem(item); }} className="p-1 text-stone-400 hover:text-stone-600">
+                      <Settings2 className="w-3 h-3" />
                     </button>
-
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => openEditFoodModal(dish)}
-                        className="p-1.5 text-stone-500 hover:text-stone-900 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer"
-                        title="Edit Dish"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        onClick={() => onDeleteMenuItem(dish.id)}
-                        className="p-1.5 text-stone-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                        title="Delete Dish"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* ----------------- TAB 2: OFFERS & DISCOUNTS CMS ----------------- */}
-      {activeTab === 'offers' && (
-        <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-bold text-stone-900 text-base">Active Discounts & Offers</h3>
-              <p className="text-stone-500 text-xs">These discounts automatically reflect on the Customer Menu and Owner POS.</p>
-            </div>
-            <button
-              onClick={() => setIsOfferModalOpen(true)}
-              className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-2xl text-xs flex items-center gap-1.5 cursor-pointer shadow-xs"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create New Promo Offer</span>
-            </button>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {offers.map((offer) => (
-              <div
-                key={offer.id}
-                className="bg-white border border-stone-200 rounded-2xl p-4 shadow-2xs space-y-3 flex flex-col justify-between"
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <span className="font-mono font-bold text-xs bg-orange-50 text-orange-800 border border-orange-200 px-2 py-0.5 rounded-lg">
-                      {offer.code}
-                    </span>
-                    <button
-                      onClick={() => onToggleOffer(offer.id)}
-                      className={`text-2xs font-bold px-2 py-0.5 rounded-md cursor-pointer ${
-                        offer.active ? 'bg-green-100 text-green-800' : 'bg-stone-100 text-stone-500'
-                      }`}
-                    >
-                      {offer.active ? 'Active' : 'Paused'}
+                    <button onClick={(e) => { e.stopPropagation(); deleteItem(item.id); }} className="p-1 text-stone-400 hover:text-red-500">
+                      <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
-                  <h4 className="font-bold text-stone-900 text-sm mt-2">{offer.title}</h4>
-                  <p className="text-xs text-stone-500 mt-1">{offer.tagline}</p>
                 </div>
-
-                <div className="pt-2 border-t border-stone-100 flex items-center justify-between text-2xs">
-                  <span className="font-extrabold text-orange-600 text-xs">{offer.badge}</span>
-                  <button
-                    onClick={() => onDeleteOffer(offer.id)}
-                    className="text-stone-400 hover:text-red-500 cursor-pointer"
-                  >
-                    Remove
+                <img src={item.image_url} alt={item.name} className="w-full h-28 object-cover rounded-xl border border-stone-200 mb-2" />
+                <h4 className="font-bold text-stone-900 text-xs sm:text-sm truncate">{item.name}</h4>
+                <div className="text-[10px] text-stone-500 mb-1">{item.description}</div>
+                <div className="flex items-center gap-1 text-stone-900 font-bold text-sm">
+                  <span>${item.price.toFixed(2)}</span>
+                  {item.original_price && <span className="text-stone-400 line-through text-[10px] ml-1">${item.original_price.toFixed(2)}</span>}
+                </div>
+                <div className="mt-2 text-[9px] text-stone-500 font-medium">
+                  {item.category} &middot; {item.prep_time_minutes}m prep &middot; {item.is_available ? 'Available' : 'Unavailable'}
+                </div>
+                <div className="mt-2 flex gap-1">
+                  {item.discount_percent ? (
+                    <button onClick={(e) => { e.stopPropagation(); removeDiscount(item.id); }}
+                      className="flex-1 py-1 text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors cursor-pointer">
+                      Remove Discount
+                    </button>
+                  ) : (
+                    <button onClick={(e) => { e.stopPropagation(); applyDiscount(item); }}
+                      className="flex-1 py-1 text-[9px] font-bold text-orange-600 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors cursor-pointer">
+                      Add Discount
+                    </button>
+                  )}
+                  <button onClick={(e) => { e.stopPropagation(); openEditItem(item); }}
+                    className="flex-1 py-1 text-[9px] font-bold text-stone-600 bg-stone-50 border border-stone-200 rounded-lg hover:bg-stone-100 transition-colors cursor-pointer">
+                    Edit
                   </button>
                 </div>
               </div>
@@ -524,440 +198,157 @@ export const CMSView: React.FC<CMSViewProps> = ({
         </div>
       )}
 
-      {/* ----------------- TAB 3: SALES & TRANSACTIONS CMS ----------------- */}
-      {activeTab === 'sales' && (
-        <div className="space-y-5">
-          {/* Action Toolbar */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <div className="relative flex-1 sm:w-64">
-                <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search order #, table, customer..."
-                  value={searchSales}
-                  onChange={(e) => setSearchSales(e.target.value)}
-                  className="w-full bg-white border border-stone-200 rounded-2xl pl-9 pr-3 py-2 text-xs focus:outline-hidden"
-                />
-              </div>
-
-              <select
-                value={salesStatusFilter}
-                onChange={(e) => setSalesStatusFilter(e.target.value as 'all' | OrderStatus)}
-                className="bg-white border border-stone-200 rounded-2xl px-3 py-2 text-xs font-medium text-stone-700"
-              >
-                <option value="all">All Statuses</option>
-                <option value="pending">Pending</option>
-                <option value="cooking">Cooking</option>
-                <option value="ready">Ready</option>
-                <option value="served">Served / Paid</option>
-              </select>
-            </div>
-
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <button
-                onClick={() => setIsManualSaleOpen(true)}
-                className="flex-1 sm:flex-none px-4 py-2 bg-stone-900 hover:bg-stone-800 text-white font-bold rounded-2xl text-xs flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <Plus className="w-4 h-4" />
-                <span>+ Manual / Cash Sale</span>
-              </button>
-
-              <button
-                onClick={exportSalesCSV}
-                className="px-3.5 py-2 bg-white hover:bg-stone-50 border border-stone-200 text-stone-700 font-bold rounded-2xl text-xs flex items-center gap-1.5 cursor-pointer"
-              >
-                <Download className="w-4 h-4" />
-                <span>Export CSV</span>
-              </button>
-            </div>
+      {/* DISCOUNTS TAB */}
+      {tab === 'discounts' && (
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <h3 className="text-[10px] font-bold text-stone-700 uppercase tracking-wider">Manage Discounts</h3>
           </div>
-
-          {/* Clean, Minimal Sales Ledger Table */}
-          <div className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-2xs">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-stone-50 border-b border-stone-200 text-stone-500 font-bold uppercase tracking-wider text-2xs">
-                    <th className="py-3 px-4">Order</th>
-                    <th className="py-3 px-4">Table / Guest</th>
-                    <th className="py-3 px-4">Dishes Ordered</th>
-                    <th className="py-3 px-4">Discount</th>
-                    <th className="py-3 px-4">Grand Total</th>
-                    <th className="py-3 px-4">Status</th>
-                    <th className="py-3 px-4 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-stone-100">
-                  {filteredSales.map((ord) => (
-                    <tr key={ord.id} className="hover:bg-stone-50/70 transition-colors">
-                      <td className="py-3.5 px-4 font-bold text-stone-900">
-                        #{ord.orderNumber}
-                      </td>
-                      <td className="py-3.5 px-4 font-medium text-stone-700">
-                        <div>{ord.tableNumber}</div>
-                        <div className="text-3xs text-stone-400">{ord.customerName || 'Diner Guest'}</div>
-                      </td>
-                      <td className="py-3.5 px-4 text-stone-600 max-w-xs truncate">
-                        {ord.items.map((i) => `${i.quantity}x ${i.name}`).join(', ')}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        {ord.discountTotal > 0 ? (
-                          <span className="font-bold text-orange-600">
-                            -${ord.discountTotal.toFixed(2)}
-                          </span>
-                        ) : (
-                          <span className="text-stone-400">—</span>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-4 font-extrabold text-stone-900">
-                        ${ord.grandTotal.toFixed(2)}
-                      </td>
-                      <td className="py-3.5 px-4">
-                        <span
-                          className={`px-2 py-0.5 rounded-lg text-2xs font-extrabold uppercase ${
-                            ord.status === 'served'
-                              ? 'bg-green-100 text-green-800'
-                              : ord.status === 'ready'
-                              ? 'bg-amber-100 text-amber-800'
-                              : 'bg-stone-100 text-stone-700'
-                          }`}
-                        >
-                          {ord.status}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        {ord.status !== 'served' && (
-                          <button
-                            onClick={() => onUpdateOrderStatus(ord.id, 'served')}
-                            className="text-2xs font-bold text-green-700 hover:text-green-800 hover:underline cursor-pointer"
-                          >
-                            Mark Completed
-                          </button>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {menuItems.filter((i) => i.discount_percent && i.discount_percent > 0).map((item) => (
+              <div key={item.id} className="border-2 border-amber-200 bg-amber-50 rounded-2xl p-3 shadow-sm">
+                <img src={item.image_url} alt={item.name} className="w-full h-28 object-cover rounded-xl border border-stone-200 mb-2" />
+                <div className="flex items-center justify-between mb-1">
+                  <h4 className="font-bold text-stone-900 text-xs sm:text-sm truncate">{item.name}</h4>
+                  <span className="text-amber-600 font-black text-sm">{item.discount_percent}% OFF</span>
+                </div>
+                <div className="text-[10px] text-stone-600">${item.original_price || item.price} → ${((item.price || 0) * (1 - (item.discount_percent || 0) / 100)).toFixed(2)}</div>
+                <button onClick={() => removeDiscount(item.id)} className="mt-2 w-full py-1 text-[9px] font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-colors cursor-pointer">
+                  Remove Discount
+                </button>
+              </div>
+            ))}
+            {menuItems.filter((i) => !i.discount_percent || i.discount_percent <= 0).map((item) => (
+              <div key={item.id} className="border border-stone-200 rounded-2xl p-3 shadow-sm bg-white">
+                <img src={item.image_url} alt={item.name} className="w-full h-28 object-cover rounded-xl border border-stone-200 mb-2" />
+                <h4 className="font-bold text-stone-900 text-xs sm:text-sm truncate">{item.name}</h4>
+                <div className="text-[10px] text-stone-500">${item.price.toFixed(2)}</div>
+                <button onClick={() => applyDiscount(item)} className="mt-2 w-full py-1 text-[9px] font-bold text-orange-600 bg-orange-50 border border-orange-200 rounded-lg hover:bg-orange-100 transition-colors cursor-pointer">
+                  Add Discount
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* ----------------- MODAL: ADD / EDIT FOOD ITEM ----------------- */}
-      {isFoodModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-2xs p-4">
-          <div className="bg-white border border-stone-200 shadow-xl rounded-3xl w-full max-w-lg overflow-hidden p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-              <h3 className="font-heading font-extrabold text-lg text-stone-900">
-                {editingItem ? 'Edit Dish Details' : 'Add New Dish to Menu'}
-              </h3>
-              <button
-                onClick={() => setIsFoodModalOpen(false)}
-                className="text-stone-400 hover:text-stone-700 p-1"
-              >
+      {/* ORDERS TAB */}
+      {tab === 'orders' && (
+        <div className="space-y-3">
+          <div className="flex justify-between items-center">
+            <h3 className="text-[10px] font-bold text-stone-700 uppercase tracking-wider">All Orders</h3>
+          </div>
+          <div className="space-y-2">
+            {allOrders.length === 0 ? (
+              <div className="bg-white border border-stone-200 rounded-2xl p-8 text-center text-[10px] text-stone-400">No orders yet</div>
+            ) : (
+              allOrders.map((ord) => (
+                <div key={ord.id} className="border border-stone-200 rounded-2xl p-3 shadow-sm bg-white">
+                  <div className="flex items-center justify-between mb-2">
+                    <div>
+                      <span className="font-bold text-stone-900 text-xs">#{ord.order_number}</span>
+                      <span className="text-stone-500 text-[9px] ml-2">{ord.table_number}</span>
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold ${
+                      ord.status === 'cooking' ? 'bg-amber-100 text-amber-800' :
+                      ord.status === 'ready' ? 'bg-green-100 text-green-800' :
+                      ord.status === 'awaiting_approval' ? 'bg-orange-100 text-orange-800' :
+                      ord.status === 'served' ? 'bg-green-100 text-green-800' :
+                      'bg-stone-100 text-stone-700'
+                    }`}>
+                      {ord.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                  {ord.customer_name && <div className="text-[9px] text-stone-600 mb-2">Guest: {ord.customer_name}</div>}
+                  <div className="text-[9px] text-stone-500 font-medium">${ord.grand_total.toFixed(2)} &middot; {ord.items.length} item(s)</div>
+                  <div className="mt-2 flex gap-1">
+                    {ord.status === 'awaiting_approval' && (
+                      <>
+                        <button onClick={() => { }} disabled className="flex-1 py-1.5 text-[9px] font-bold text-stone-500 bg-stone-100 border border-stone-200 rounded-lg cursor-not-allowed">Approve</button>
+                        <button onClick={() => { }} disabled className="flex-1 py-1.5 text-[9px] font-bold text-stone-500 bg-stone-100 border border-stone-200 rounded-lg cursor-not-allowed">Decline</button>
+                      </>
+                    )}
+                    {ord.status === 'cooking' && (
+                      <button onClick={() => orders.status(ord.id, 'ready')} className="flex-1 py-1.5 text-[9px] font-bold text-white bg-green-600 hover:bg-green-700 rounded-lg shadow-sm cursor-pointer">Mark Ready</button>
+                    )}
+                    {ord.status === 'ready' && (
+                      <button onClick={() => orders.status(ord.id, 'served')} className="flex-1 py-1.5 text-[9px] font-bold text-stone-800 bg-stone-200 hover:bg-stone-300 rounded-lg shadow-sm cursor-pointer">Mark Served</button>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Add/Edit Item Modal */}
+      {itemModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setItemModalOpen(false)}>
+          <div className="bg-white rounded-2xl p-5 shadow-2xl w-full max-w-md mx-4 transform scale-100" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-stone-900 text-sm">{editingItemId ? 'Edit Item' : 'Add Item'}</h3>
+              <button onClick={() => setItemModalOpen(false)} className="text-stone-400 hover:text-stone-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            <form onSubmit={handleSaveFood} className="space-y-3 text-xs">
+            <form onSubmit={(e) => { e.preventDefault(); handleSaveItem(); }} className="space-y-3">
               <div>
-                <label className="block font-bold text-stone-700 mb-1">Dish Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={formName}
-                  onChange={(e) => setFormName(e.target.value)}
-                  placeholder="e.g. Crispy Honey Garlic Ribs"
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900"
-                />
+                <label className="block text-[10px] font-bold text-stone-700 mb-1.5 uppercase tracking-wider">Item Name</label>
+                <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="e.g. Smokehouse Burger"
+                  className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-[10px] focus:outline-hidden focus:border-orange-500" />
               </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-stone-700 mb-1">Category</label>
-                  <select
-                    value={formCategory}
-                    onChange={(e) => setFormCategory(e.target.value as MenuItem['category'])}
-                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-medium"
-                  >
-                    <option value="specials">Specials & Deals</option>
-                    <option value="mains">Mains</option>
-                    <option value="combos">Combos</option>
-                    <option value="starters">Starters</option>
-                    <option value="drinks">Drinks</option>
-                    <option value="desserts">Desserts</option>
+                  <label className="block text-[10px] font-bold text-stone-700 mb-1.5 uppercase tracking-wider">Category</label>
+                  <select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                    className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-[10px] focus:outline-hidden focus:border-orange-500">
+                    {categories.map((c) => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
                   </select>
                 </div>
-
                 <div>
-                  <label className="block font-bold text-stone-700 mb-1">Selling Price ($) *</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={formPrice}
-                    onChange={(e) => setFormPrice(e.target.value)}
-                    placeholder="16.99"
-                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900"
-                  />
+                  <label className="block text-[10px] font-bold text-stone-700 mb-1.5 uppercase tracking-wider">Price ($)</label>
+                  <input type="number" step="0.01" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                    className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-[10px] focus:outline-hidden focus:border-orange-500" />
                 </div>
               </div>
-
-              {/* Discounts & Original Price */}
-              <div className="grid grid-cols-2 gap-3 p-2.5 bg-orange-50/50 rounded-xl border border-orange-100">
-                <div>
-                  <label className="block font-bold text-orange-900 mb-1">Original Price ($) (Optional)</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formOriginalPrice}
-                    onChange={(e) => setFormOriginalPrice(e.target.value)}
-                    placeholder="21.00 (shows strikethrough)"
-                    className="w-full bg-white border border-orange-200 rounded-xl px-3 py-1.5 text-stone-900"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-orange-900 mb-1">Discount %</label>
-                  <input
-                    type="number"
-                    value={formDiscountPercent}
-                    onChange={(e) => setFormDiscountPercent(e.target.value)}
-                    placeholder="20 (shows 20% OFF tag)"
-                    className="w-full bg-white border border-orange-200 rounded-xl px-3 py-1.5 text-stone-900"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-stone-700 mb-1">Description</label>
-                <textarea
-                  rows={2}
-                  value={formDescription}
-                  onChange={(e) => setFormDescription(e.target.value)}
-                  placeholder="Mouthwatering description for guests..."
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-1.5 text-stone-900"
-                ></textarea>
-              </div>
-
-              <div>
-                <label className="block font-bold text-stone-700 mb-1">Image URL</label>
-                <input
-                  type="text"
-                  value={formImageUrl}
-                  onChange={(e) => setFormImageUrl(e.target.value)}
-                  placeholder="https://images.unsplash.com/..."
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-1.5 text-stone-900"
-                />
-              </div>
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-stone-700 mb-1">Prep Time (mins)</label>
-                  <input
-                    type="number"
-                    value={formPrepTime}
-                    onChange={(e) => setFormPrepTime(e.target.value)}
-                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-1.5 text-stone-900"
-                  />
-                </div>
-                <div className="flex items-center gap-2 pt-5">
-                  <input
-                    type="checkbox"
-                    id="veg-check"
-                    checked={formIsVeg}
-                    onChange={(e) => setFormIsVeg(e.target.checked)}
-                    className="rounded text-orange-600 focus:ring-orange-500"
-                  />
-                  <label htmlFor="veg-check" className="font-bold text-stone-700 cursor-pointer">
-                    Vegetarian Dish
-                  </label>
-                </div>
-              </div>
-
-              <div className="pt-3 border-t border-stone-100 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsFoodModalOpen(false)}
-                  className="flex-1 py-2.5 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-xl shadow-xs"
-                >
-                  Save Dish
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ----------------- MODAL: CREATE MANUAL SALE ----------------- */}
-      {isManualSaleOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-2xs p-4">
-          <div className="bg-white border border-stone-200 shadow-xl rounded-3xl w-full max-w-sm overflow-hidden p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-              <h3 className="font-heading font-extrabold text-base text-stone-900">
-                Log Direct / Walk-in Cash Sale
-              </h3>
-              <button onClick={() => setIsManualSaleOpen(false)} className="text-stone-400">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateManualSale} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-stone-700 mb-1">Table / Counter</label>
-                <input
-                  type="text"
-                  value={manualTable}
-                  onChange={(e) => setManualTable(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-stone-700 mb-1">Sale Amount ($) *</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  required
-                  placeholder="35.00"
-                  value={manualAmount}
-                  onChange={(e) => setManualAmount(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-bold text-sm"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-stone-700 mb-1">Note / Description</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 2 Lunch Combos cash payment"
-                  value={manualNote}
-                  onChange={(e) => setManualNote(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900"
-                />
-              </div>
-
-              <div className="pt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsManualSaleOpen(false)}
-                  className="flex-1 py-2 bg-stone-100 text-stone-700 font-bold rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2 bg-stone-900 text-white font-bold rounded-xl"
-                >
-                  Record Sale
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ----------------- MODAL: CREATE NEW PROMO OFFER ----------------- */}
-      {isOfferModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-2xs p-4">
-          <div className="bg-white border border-stone-200 shadow-xl rounded-3xl w-full max-w-sm overflow-hidden p-6 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-stone-100">
-              <h3 className="font-heading font-extrabold text-base text-stone-900">
-                Create Discount Offer
-              </h3>
-              <button onClick={() => setIsOfferModalOpen(false)} className="text-stone-400">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveOffer} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-stone-700 mb-1">Offer Title *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Weekend Family Special"
-                  value={offerTitle}
-                  onChange={(e) => setOfferTitle(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block font-bold text-stone-700 mb-1">Coupon Code *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="WEEKEND20"
-                    value={offerCode}
-                    onChange={(e) => setOfferCode(e.target.value.toUpperCase())}
-                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-mono font-bold"
-                  />
+                  <label className="block text-[10px] font-bold text-stone-700 mb-1.5 uppercase tracking-wider">Original Price ($)</label>
+                  <input type="number" step="0.01" value={formData.original_price} onChange={(e) => setFormData({ ...formData, original_price: e.target.value })}
+                    placeholder="Optional"
+                    className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-[10px] focus:outline-hidden focus:border-orange-500" />
                 </div>
                 <div>
-                  <label className="block font-bold text-stone-700 mb-1">Badge Text</label>
-                  <input
-                    type="text"
-                    placeholder="20% OFF"
-                    value={offerBadge}
-                    onChange={(e) => setOfferBadge(e.target.value)}
-                    className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900"
-                  />
+                  <label className="block text-[10px] font-bold text-stone-700 mb-1.5 uppercase tracking-wider">Prep Time (min)</label>
+                  <input type="number" value={formData.prep_time_minutes} onChange={(e) => setFormData({ ...formData, prep_time_minutes: e.target.value })}
+                    className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-[10px] focus:outline-hidden focus:border-orange-500" />
                 </div>
               </div>
-
               <div>
-                <label className="block font-bold text-stone-700 mb-1">Discount Value</label>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    value={offerValue}
-                    onChange={(e) => setOfferValue(e.target.value)}
-                    className="w-24 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-bold"
-                  />
-                  <select
-                    value={offerDiscountType}
-                    onChange={(e) => setOfferDiscountType(e.target.value as 'percent' | 'flat')}
-                    className="flex-1 bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900 font-medium"
-                  >
-                    <option value="percent">% Percent Discount</option>
-                    <option value="flat">$ Flat Dollar Off</option>
-                  </select>
-                </div>
+                <label className="block text-[10px] font-bold text-stone-700 mb-1.5 uppercase tracking-wider">Description</label>
+                <input type="text" value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="e.g. Juicy double beef patty..."
+                  className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-[10px] focus:outline-hidden focus:border-orange-500" />
               </div>
-
+              <div className="flex items-center gap-2">
+                <input type="checkbox" checked={formData.is_available} onChange={(e) => setFormData({ ...formData, is_available: e.target.checked })}
+                  className="w-4 h-4 text-orange-600" />
+                <span className="text-[10px] font-bold text-stone-700">Available</span>
+              </div>
               <div>
-                <label className="block font-bold text-stone-700 mb-1">Tagline</label>
-                <input
-                  type="text"
-                  placeholder="e.g. 20% off all main platters"
-                  value={offerTagline}
-                  onChange={(e) => setOfferTagline(e.target.value)}
-                  className="w-full bg-stone-50 border border-stone-200 rounded-xl px-3 py-2 text-stone-900"
-                />
+                <label className="block text-[10px] font-bold text-stone-700 mb-1.5 uppercase tracking-wider">Image URL</label>
+                <input type="text" value={formData.image_url} onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
+                  placeholder="/images/burger.svg"
+                  className="w-full bg-stone-50 border border-stone-200 rounded-lg px-3 py-2 text-[10px] focus:outline-hidden focus:border-orange-500" />
               </div>
-
-              <div className="pt-2 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsOfferModalOpen(false)}
-                  className="flex-1 py-2 bg-stone-100 text-stone-700 font-bold rounded-xl"
-                >
-                  Cancel
+              <div className="pt-2 border-t border-stone-100 space-y-2">
+                <button type="submit" className="w-full py-2 font-bold rounded-lg text-[10px] bg-orange-500 hover:bg-orange-600 text-white shadow-sm cursor-pointer">
+                  {editingItemId ? 'Save Changes' : 'Create Item'}
                 </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2 bg-orange-500 text-white font-bold rounded-xl"
-                >
-                  Save Offer
+                <button type="button" onClick={() => setItemModalOpen(false)} className="w-full py-2 text-[10px] font-bold text-stone-600 hover:bg-stone-100 rounded-lg transition-colors cursor-pointer">
+                  Cancel
                 </button>
               </div>
             </form>
